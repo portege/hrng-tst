@@ -1,0 +1,211 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Resources": {
+        "lambdafunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Code": {
+                    "ZipFile": {
+                        "Fn::Join": [
+                            "\n",
+                            [
+                              "from __future__ import print_function",
+                              "import boto3",
+                              "from boto3.dynamodb.conditions import Key, Attr",
+
+                              "dynamodb = boto3.resource('dynamodb', region_name='ap-southeast-1')",
+                              "table = dynamodb.Table('datauser')",
+
+                              "def check_ip(input_ip):",
+                              "  response = table.query(",
+                              "      KeyConditionExpression=Key('ip_address').eq(input_ip)",
+                              "  )",
+                              "  return response['Count'];",
+
+                              "def input_ip(input_ip):",
+                              "  response = table.put_item(",
+                              "     Item={",
+                              "          'ip_address': input_ip",
+                              "      }",
+                              "  )",
+
+                              "def lambda_handler(event, context):",
+                              " # get_visitor_ip() routine goes here",
+                              "  ip = '127.0.0.1'",
+
+                              "# show all record",
+                              "  x = []",
+                              "  response = table.scan()",
+                              "  for ips in response['Items']:",
+                              "    x.append(ips['ip_address'])",
+
+                              "  if (check_ip(ip)==0):",
+                              "    input_ip(ip)",
+
+                              "  return '<br />'.join(x)"
+                            ]
+                        ]
+                    }
+                },
+                "FunctionName": "userlog",
+                "Handler": "index.lambda_handler",
+                "MemorySize": 128,
+                "Role": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            "arn:aws:iam::",
+                            {
+                                "Ref": "AWS::AccountId"
+                            },
+                            ":role/lambda_basic_execution"
+                        ]
+                    ]
+                },
+                "Runtime": "python2.7",
+                "Environment": {
+                  "Variables": {"datastoreendpoint": {"Fn::GetAtt": ["Datastore","Arn"]}}
+                }
+            }
+        },
+        "Deployment": {
+            "Type": "AWS::ApiGateway::Deployment",
+            "Properties": {
+                "RestApiId": {
+                    "Ref": "apigatewayrestapi"
+                },
+                "Description": "First Deployment",
+                "StageName": "dev"
+            },
+            "DependsOn": [
+                "apigatewaymethod"
+            ]
+        },
+        "apigatewaymethod": {
+            "Type": "AWS::ApiGateway::Method",
+            "Properties": {
+                "AuthorizationType": "NONE",
+                "HttpMethod": "GET",
+                "ResourceId": {
+                    "Ref": "apigatewayres"
+                },
+                "RestApiId": {
+                    "Ref": "apigatewayrestapi"
+                },
+                "Integration": {
+                    "Type": "AWS",
+                    "IntegrationHttpMethod": "POST",
+                    "IntegrationResponses": [
+                        {
+                            "StatusCode": 200
+                        }
+                    ],
+                    "Uri": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:aws:apigateway:",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                ":lambda:path/2015-03-31/functions/",
+                                {
+                                    "Fn::GetAtt": [
+                                        "lambdafunction",
+                                        "Arn"
+                                    ]
+                                },
+                                "/invocations"
+                            ]
+                        ]
+                    }
+                },
+                "MethodResponses": [
+                    {
+                        "StatusCode": 200
+                    }
+                ]
+            },
+            "DependsOn": [
+                "lambdafunction",
+                "apigatewayres",
+                "lambdapermission"
+            ]
+        },
+        "apigatewayres": {
+            "Type": "AWS::ApiGateway::Resource",
+            "Properties": {
+                "RestApiId": {
+                    "Ref": "apigatewayrestapi"
+                },
+                "ParentId": {
+                    "Fn::GetAtt": [
+                        "apigatewayrestapi",
+                        "RootResourceId"
+                    ]
+                },
+                "PathPart": "get"
+            },
+            "DependsOn": [
+                "apigatewayrestapi"
+            ]
+        },
+        "apigatewayrestapi": {
+            "Type": "AWS::ApiGateway::RestApi",
+            "Properties": {
+                "Name": "user"
+            }
+        },
+        "lambdapermission": {
+            "Type": "AWS::Lambda::Permission",
+            "Properties": {
+                "Action": "lambda:invokeFunction",
+                "FunctionName": {
+                    "Fn::GetAtt": [
+                        "lambdafunction",
+                        "Arn"
+                    ]
+                },
+                "Principal": "apigateway.amazonaws.com",
+                "SourceArn": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            "arn:aws:execute-api:",
+                            {
+                                "Ref": "AWS::Region"
+                            },
+                            ":",
+                            {
+                                "Ref": "AWS::AccountId"
+                            },
+                            ":",
+                            {
+                                "Ref": "apigatewayrestapi"
+                            },
+                            "/*"
+                        ]
+                    ]
+                }
+            }
+        },
+        "Datastore": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+                "TableName": "datauser",
+                "KeySchema": [{
+                  "AttributeName": "ip_address",
+                  "KeyType": "HASH"
+                }],
+                "AttributeDefinitions" :[{
+                  "AttributeName": "ip_address",
+                  "AttributeType": "S"
+                }],
+                "ProvisionedThroughput" : {
+                  "ReadCapacityUnits" : "5",
+                  "WriteCapacityUnits" : "5"
+                }
+            }
+        }
+    }
+}
