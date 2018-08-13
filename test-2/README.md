@@ -23,7 +23,7 @@ Here is a data dictionary of the fields in the data:
 ## Constraint & Limitation ##
 ### Main Process ###
 Data ingestion is a service that collects data from many sources and put it on any kind of data store, and it's basically there is two method of gathering the data:
-- Passive: where the data source *pushes* the data into one data collecting service. An example of this method is Tracking service using AWS Kinesis. The tracking only listens on its API and the schema is defined here as well.
+- Passive: where the data source *pushes* the data into one data collecting service. An example of this method is Tracking service using AWS Kinesis. The tracking only listens on its API and waiting for the sources to push the data.
 - Active: the ingestion process will access from one or many sources and then *collect* the data from there. The application needs to understand about the source (Database engine, schema, authentication) and requires to direct connect to it.
 
 Both methods are using a different methodology and technology to ingest the data. either the data-ingestion service receives the data by actively pulling from the sources or passively gather the data from the sources.
@@ -34,6 +34,7 @@ For this design, we will be focusing on the first method, that is creating a tra
 This design will only cover the basic functionality of the use-case. And will not cover the overall security aspect (IAM Role, WAF, Data quality, Encryption) and Performance point of view (the number of shards, availability zones)
 
 ## Assumption ##
+All the data source respect the data schema to avoid any error can occur.
 
 ## Architecture & Design ##
 Essentially, the design will be using *managed service* on AWS to minimize the day-to-day operation overhead. All the technology stack will be maintained by AWS, so we can focus more on product and development. The stack as following:
@@ -41,7 +42,7 @@ Essentially, the design will be using *managed service* on AWS to minimize the d
 * Kinesis Firehose: will push the data from Kinesis to any data warehouse.
 * S3: will use as data store engine, since it provides a high scalability environment, it also low-cost data store.
 
-```[Kinesis] --> [Kinesis Firehose] --> [S3]```
+```[data source (desktop/web/IoT)] --> [Kinesis] --> [Kinesis Firehose] --> [S3]```
 
 ## Implementation ##
 ### Infrastructure As a Code ###
@@ -106,17 +107,20 @@ EOF
   acl    = "private"
 }
 ```
-*The terraform script can be found under folder /tf
+*The terraform script can be found under folder `/tf`
 
-There is one file that managed all the terraform variable, *lokal.tfvars. This will keep its portability and scalability. If we need to deploy one more stack, we just can create another _tfvars_ and define the new variables there.
+There is one file that managed all the terraform variable, _lokal.tfvars_. This will keep its portability and scalability. If we need to deploy one more stack, we just can create another _tfvars_ and define the new variables there.
 
 To start the deployment we can execute terraform command `terraform apply -var-files lokal.tfvars`
 
 ## Recommendation ##
 As mentioned, this design only for a basic requirement to build a simple data ingestion system. For production ready environment, these are the recommendations:
 * Enable SSE on Data storage for data encryption
+* Enable versioning on S3 can also be used for a backup
 * Capacity plan on Kinesis a number of shards 
 * Enabling compression on Kinesis Firehose to reduce volume size on S3
+* Enabling a detailed monitoring system
 
 ## Tradeoff ##
-Since the data stores on S3, then it requires another technology layer to read the data from S3 like a Database. Service like AWS Athena can be used to solve this, or installing Hive or Presto on the top of EMR. However, this will create more stack to manage and there will be another additional cost for the implementation.
+Since the data stores on S3, then it requires another technology layer to read the data from S3 communicate like a Database. Service like AWS Athena can be used to solve this, or installing Hive or Presto on the top of EMR as an alternative. However, this will create more stack to manage and there will be another additional cost for the implementation.
+
