@@ -10,7 +10,7 @@ resource "aws_kinesis_stream" "kinesis_stream" {
 }
 
 resource "aws_s3_bucket" "stream_bucket" {
-  bucket           = "stream-bucket"
+  bucket           = "${var.aws_stream_bucket}"
   acl    = "private"
 }
 
